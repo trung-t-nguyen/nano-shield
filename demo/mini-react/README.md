@@ -1,20 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a [Next.js](https://nextjs.org) demo app for [mini-guard](../../README.md).
 
 ## Getting Started
 
-First, run the development server:
+### Using published mini-guard
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Using local mini-guard build
+
+Run this once from the **mini-guard root** to build and register the package locally:
+
+```bash
+npm run link:setup
+```
+
+Then open two terminals:
+
+```bash
+# Terminal 1 — mini-guard root: rebuild on every save
+npm run dev
+
+# Terminal 2 — here (demo/mini-react): link local build + start Next.js
+npm run dev:local
+```
+
+`dev:local` symlinks the local build into `node_modules/mini-guard` via `npm link`. After the first run the symlink persists, so subsequent `npm run dev` also uses the local build. Every save to mini-guard's `src/` triggers a rebuild; Next.js picks it up on the next page reload.
+
+Open [http://localhost:3000](http://localhost:3000) to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

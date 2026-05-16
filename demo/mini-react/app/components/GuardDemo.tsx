@@ -98,8 +98,9 @@ const MODULE_LABELS: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GuardDemo() {
-  const [guard] = useState(
-    () => new MiniGuard(featureMap, { defaultModule: 'dashboard' })
+  const [debug, setDebug] = useState(false);
+  const [guard, setGuard] = useState(
+    () => new MiniGuard(featureMap, { defaultModule: 'dashboard', debug: false })
   );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
@@ -107,6 +108,15 @@ export default function GuardDemo() {
   const [customInput, setCustomInput] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
   const [tick, setTick] = useState(0); // forces re-render after guard state change
+
+  function toggleDebug() {
+    const next = !debug;
+    setDebug(next);
+    const newGuard = new MiniGuard(featureMap, { defaultModule: 'dashboard', debug: next });
+    if (tokenPreview) newGuard.init(tokenPreview);
+    setGuard(newGuard);
+    setTick((t) => t + 1);
+  }
 
   function applyToken(token: string | null) {
     if (token) {
@@ -155,14 +165,28 @@ export default function GuardDemo() {
             Ultra-lightweight RBAC · JWT decoding · zero dependencies
           </p>
         </div>
-        <a
-          href="https://www.npmjs.com/package/mini-guard"
-          target="_blank"
-          rel="noreferrer"
-          className="ml-auto text-xs bg-red-600 text-white px-3 py-1 rounded-full font-medium hover:bg-red-700 transition-colors"
-        >
-          npm install mini-guard
-        </a>
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={toggleDebug}
+            title="Logs [MiniGuard] events to the browser console"
+            className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-medium border transition-colors ${
+              debug
+                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+            }`}
+          >
+            <span>{debug ? '🐛' : '🐛'}</span>
+            debug {debug ? 'on' : 'off'}
+          </button>
+          <a
+            href="https://www.npmjs.com/package/mini-guard"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs bg-red-600 text-white px-3 py-1 rounded-full font-medium hover:bg-red-700 transition-colors"
+          >
+            npm install mini-guard
+          </a>
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
@@ -352,6 +376,7 @@ export default function GuardDemo() {
 
 const guard = new MiniGuard(featureMap, {
   defaultModule: 'dashboard',
+  debug: ${debug},${debug ? '         // logs [MiniGuard] events to console' : ''}
 });
 
 guard.init(rawJwtToken);       // after login

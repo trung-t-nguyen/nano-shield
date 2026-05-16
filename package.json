@@ -19,6 +19,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
+    "dev": "tsup --watch",
+    "link:setup": "npm run build && npm link",
     "build:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

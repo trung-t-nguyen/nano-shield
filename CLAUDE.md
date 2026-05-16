@@ -18,6 +18,25 @@ Run a single test file:
 npx vitest run tests/jwt.test.ts
 ```
 
+## Local demo development (demo/mini-react)
+
+One-time setup — run from mini-guard root:
+```bash
+npm run link:setup   # build + npm link (registers package globally)
+```
+
+Then two terminals:
+
+```bash
+# Terminal 1 — mini-guard root: rebuild on every save
+npm run dev
+
+# Terminal 2 — demo/mini-react: link local build + start Next.js
+npm run dev:local
+```
+
+`npm run dev:local` symlinks the local mini-guard build into mini-react's `node_modules` via `npm link`. After the first run, subsequent `npm run dev` in mini-react will keep using the symlink — no reinstall needed. Every save to `src/` triggers a tsup rebuild; Next.js picks it up on the next page reload.
+
 ## Architecture
 
 ### Source layout

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:local": "npm link mini-guard && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
