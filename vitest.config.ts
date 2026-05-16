@@ -5,11 +5,11 @@ export default defineConfig({
     env: { MINI_GUARD_DEBUG: '1' },
     environment: 'jsdom',
     globals: false,
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/**/*.ts'],
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
     },
   },
 });

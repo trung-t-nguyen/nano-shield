@@ -1,7 +1,7 @@
-import { Component, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MiniGuard } from 'mini-guard';
+import { MiniGuardService, MiniGuardDirective } from 'mini-guard/angular';
 
 // ── Feature map ──────────────────────────────────────────────────────────────
 const featureMap = {
@@ -110,11 +110,15 @@ export interface ModuleGroup {
 @Component({
   selector: 'app-guard-demo',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MiniGuardDirective],
   templateUrl: './guard-demo.component.html',
 })
-export class GuardDemoComponent {
-  private guard = new MiniGuard(featureMap, { defaultModule: 'dashboard' });
+export class GuardDemoComponent implements OnInit {
+  private readonly miniGuard = inject(MiniGuardService);
+
+  ngOnInit(): void {
+    this.miniGuard.configure(featureMap, { defaultModule: 'dashboard', debug: this.debugMode() });
+  }
 
   presetUsers = PRESET_USERS;
   activeLabel = signal<string | null>(null);
@@ -122,7 +126,8 @@ export class GuardDemoComponent {
   tokenPreview = signal<string | null>(null);
   customInput = signal('');
   customOpen = signal(false);
-  tick = signal(0); // drives re-evaluation of canAccess
+  debugMode = signal(false);
+  tick = signal(0);
 
   moduleGroups: ModuleGroup[] = Object.entries(featureMap).map(([mod, features]) => ({
     mod,
@@ -135,19 +140,19 @@ export class GuardDemoComponent {
   }));
 
   canAccess(feat: string, mod: string): boolean {
-    void this.tick(); // reactive dependency
-    return this.guard.canAccess(feat, mod);
+    void this.tick();
+    return this.miniGuard.canAccess(feat, mod);
   }
 
   applyToken(token: string | null) {
     if (token) {
-      this.guard.init(token);
+      this.miniGuard.init(token);
       const payload = decodePayload(token);
       const raw = payload?.['roles'];
       this.roles.set(Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : []);
       this.tokenPreview.set(token);
     } else {
-      this.guard.clear();
+      this.miniGuard.clear();
       this.roles.set([]);
       this.tokenPreview.set(null);
     }
@@ -169,7 +174,7 @@ export class GuardDemoComponent {
   }
 
   logout() {
-    this.guard.clear();
+    this.miniGuard.clear();
     this.roles.set([]);
     this.tokenPreview.set(null);
     this.activeLabel.set(null);
@@ -178,6 +183,14 @@ export class GuardDemoComponent {
 
   toggleCustomOpen() {
     this.customOpen.update((o) => !o);
+  }
+
+  toggleDebug() {
+    this.debugMode.update((d) => !d);
+    this.miniGuard.configure(featureMap, { defaultModule: 'dashboard', debug: this.debugMode() });
+    const token = this.tokenPreview();
+    if (token) this.miniGuard.init(token);
+    this.tick.update((t) => t + 1);
   }
 
   onCustomInputChange(value: string) {
@@ -189,16 +202,24 @@ export class GuardDemoComponent {
   }
 
   codeSnippet(): string {
-    return `import { MiniGuard } from 'mini-guard';
+    return `import { MiniGuardService, MiniGuardDirective } from 'mini-guard/angular';
 
-const guard = new MiniGuard(featureMap, {
-  defaultModule: 'dashboard',
-});
+// AppComponent — configure once after login
+constructor(private miniGuard: MiniGuardService) {}
 
-guard.init(rawJwtToken);       // after login
-guard.canAccess('view:reports');          // → ${this.guard.canAccess('view:reports', 'dashboard')}
-guard.canAccess('edit:reports');          // → ${this.guard.canAccess('edit:reports', 'dashboard')}
-guard.canAccess('manage:users', 'settings'); // → ${this.guard.canAccess('manage:users', 'settings')}
-guard.clear();                 // on logout`;
+ngOnInit() {
+  this.miniGuard.configure(featureMap, { defaultModule: 'dashboard' });
+  this.miniGuard.init(rawJwtToken);
+}
+
+// Programmatic check
+this.miniGuard.canAccess('view:reports')              // → ${this.miniGuard.canAccess('view:reports')}
+this.miniGuard.canAccess('edit:reports')              // → ${this.miniGuard.canAccess('edit:reports')}
+this.miniGuard.canAccess('manage:users', 'settings')  // → ${this.miniGuard.canAccess('manage:users', 'settings')}
+this.miniGuard.clear();  // on logout
+
+// Template — structural directive
+// <button *miniGuard="'export:data'">Export</button>
+// <a *miniGuard="'manage:users'; module: 'settings'">Admin</a>`;
   }
 }

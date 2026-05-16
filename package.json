@@ -1,6 +1,6 @@
 {
   "name": "mini-guard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Ultra-lightweight (<1KB) zero-dependency frontend RBAC with JWT support",
   "type": "module",
   "files": [
@@ -12,11 +12,31 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react.js",
+      "types": "./dist/react.d.ts"
+    },
+    "./angular": {
+      "import": "./dist/angular.js",
+      "types": "./dist/angular.d.ts"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "sideEffects": false,
+  "peerDependencies": {
+    "@angular/core": ">=15",
+    "react": ">=17"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@angular/core": {
+      "optional": true
+    }
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -48,11 +68,21 @@
   "author": "Trung Nguyen",
   "license": "MIT",
   "devDependencies": {
+    "@angular/common": "^19.2.22",
+    "@angular/compiler": "^19.2.22",
+    "@angular/core": "^19.2.22",
+    "@angular/platform-browser": "^19.2.22",
     "@biomejs/biome": "^2.4.15",
+    "@testing-library/react": "^14.3.1",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
     "@vitest/coverage-v8": "^1.6.0",
     "jsdom": "^29.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "zone.js": "^0.15.1"
   }
 }

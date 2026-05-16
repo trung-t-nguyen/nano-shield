@@ -2,7 +2,7 @@
 
 Ultra-lightweight (<1KB), zero-dependency, frontend-focused RBAC (Role-Based Access Control) utility. Safely decodes JWTs in the browser and matches the user's roles against a centralized feature-to-role configuration map.
 
-[![bundle size](https://img.shields.io/badge/gzipped-~731B-brightgreen)](https://bundlephobia.com/package/mini-guard)
+[![bundle size](https://img.shields.io/badge/gzipped-~913B-brightgreen)](https://bundlephobia.com/package/mini-guard)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![github](https://img.shields.io/badge/github-mini--guard-181717?logo=github)](https://github.com/trung-t-nguyen/mini-guard)
 
@@ -16,6 +16,8 @@ Ultra-lightweight (<1KB), zero-dependency, frontend-focused RBAC (Role-Based Acc
 - **JWT expiry guard** — expired tokens are automatically treated as unauthorized
 - **Nested claim paths** — extract roles from deep JWT structures via dot-notation
 - **TypeScript-first** — ships with full type declarations
+- **React adapter** — `useMiniGuard` hook + `MiniGuardProvider` context (`mini-guard/react`)
+- **Angular adapter** — `MiniGuardService` + `*miniGuard` structural directive (`mini-guard/angular`)
 
 ---
 
@@ -24,6 +26,18 @@ Ultra-lightweight (<1KB), zero-dependency, frontend-focused RBAC (Role-Based Acc
 ```bash
 npm install mini-guard
 ```
+
+---
+
+## Framework Adapters
+
+| Import | Framework | What you get |
+|---|---|---|
+| `mini-guard` | Any | `MiniGuard` core class |
+| `mini-guard/react` | React ≥ 17 | `useMiniGuard` hook, `MiniGuardProvider` |
+| `mini-guard/angular` | Angular ≥ 15 | `MiniGuardService`, `MiniGuardDirective` |
+
+Adapters are separate subpath exports — importing `mini-guard/react` does **not** add Angular to your bundle, and vice versa. The core `mini-guard` entry remains framework-free and under 1 KB.
 
 ---
 
@@ -234,9 +248,169 @@ Token expiry (`exp` claim) is checked automatically. An expired token is treated
 
 ---
 
+## React
+
+Install peer dependency:
+
+```bash
+npm install react
+```
+
+### `useMiniGuard(featureMap?, options?)`
+
+A hook that manages a `MiniGuard` instance and triggers re-renders after `init` and `clear`.
+
+Returns `{ init, clear, canAccess, instance }`:
+
+| Return | Description |
+|---|---|
+| `init(token)` | Decode a JWT and cache roles; triggers re-render |
+| `clear()` | Wipe roles; triggers re-render |
+| `canAccess(feature, module?)` | Check access; stable reference, re-evaluated after each `init`/`clear` |
+| `instance` | The underlying `MiniGuard` — escape hatch for direct access |
+
+Must be called with either `featureMap` or inside a `MiniGuardProvider` — throws if neither is provided.
+
+```tsx
+import { useMiniGuard } from 'mini-guard/react';
+
+const featureMap = {
+  dashboard: { 'view:reports': ['admin', 'analyst'], 'export': ['admin'] },
+};
+
+function App() {
+  const { init, clear, canAccess } = useMiniGuard(featureMap, { defaultModule: 'dashboard' });
+
+  useEffect(() => { init(rawJwtToken); }, []);
+
+  return (
+    <>
+      {canAccess('view:reports') && <ReportsPanel />}
+      {canAccess('export') && <ExportButton />}
+      <button onClick={clear}>Logout</button>
+    </>
+  );
+}
+```
+
+### `Guard`
+
+A declarative alternative to `canAccess` — renders `children` when access is granted, `fallback` otherwise. Must be inside a `MiniGuardProvider`.
+
+```tsx
+import { Guard } from 'mini-guard/react';
+
+<Guard feature="export" module="dashboard" fallback={<span>No access</span>}>
+  <ExportButton />
+</Guard>
+```
+
+| Prop | Type | Description |
+|---|---|---|
+| `feature` | `string` (required) | Feature key to check |
+| `module` | `string` | Module override — uses `defaultModule` if omitted |
+| `fallback` | `ReactNode` | Rendered when access is denied (default: `null`) |
+
+### `MiniGuardProvider` + `useMiniGuard()` (shared instance)
+
+For app-wide sharing, create one `MiniGuard` instance and pass it through context. Calls to `init`/`clear` from any `useMiniGuard()` inside the provider automatically re-render all sibling `Guard` components.
+
+```tsx
+import { MiniGuard } from 'mini-guard';
+import { MiniGuardProvider, useMiniGuard, Guard } from 'mini-guard/react';
+
+const guard = new MiniGuard(featureMap, { defaultModule: 'dashboard' });
+
+// App root
+function Root() {
+  return (
+    <MiniGuardProvider guard={guard}>
+      <LoginButton />
+      <Guard feature="export" module="dashboard">
+        <ExportButton />
+      </Guard>
+    </MiniGuardProvider>
+  );
+}
+
+// init() here propagates to every Guard in the same provider
+function LoginButton() {
+  const { init } = useMiniGuard();
+  return <button onClick={() => init(rawJwtToken)}>Login</button>;
+}
+```
+
+---
+
+## Angular
+
+Install peer dependency:
+
+```bash
+npm install @angular/core
+```
+
+### `MiniGuardService`
+
+An `Injectable` service (provided in root) for managing the guard lifecycle.
+
+```typescript
+import { MiniGuardService } from 'mini-guard/angular';
+
+@Component({ ... })
+export class AppComponent {
+  constructor(private miniGuard: MiniGuardService) {
+    // one-call form — configure and load token together
+    miniGuard.configure(featureMap, { defaultModule: 'dashboard' }, rawJwtToken);
+  }
+
+  logout() {
+    this.miniGuard.clear();
+  }
+}
+```
+
+To swap the feature map mid-session (e.g. after a role change), call `configure()` again with the new token — the previous session is replaced atomically:
+
+```typescript
+miniGuard.configure(newFeatureMap, { defaultModule: 'dashboard' }, freshJwtToken);
+```
+
+| Method | Description |
+|---|---|
+| `configure(featureMap, options?, token?)` | Creates (or replaces) the underlying `MiniGuard` instance; pass `token` to initialise in one call |
+| `init(token)` | Decodes the JWT and caches roles |
+| `clear()` | Wipes roles — call on logout |
+| `canAccess(feature, module?)` | Returns `true` if the current user can access the feature |
+
+### `MiniGuardDirective` (`*miniGuard`)
+
+A standalone structural directive that renders its host element only when access is granted.
+
+```typescript
+import { MiniGuardDirective } from 'mini-guard/angular';
+
+@Component({
+  standalone: true,
+  imports: [MiniGuardDirective],
+  template: `
+    <button *miniGuard="'export'">Export</button>
+    <a *miniGuard="'edit'; module: 'settings'" routerLink="/settings">Settings</a>
+  `,
+})
+export class DashboardComponent {}
+```
+
+| Input | Type | Description |
+|---|---|---|
+| `miniGuard` | `string` (required) | Feature key to check |
+| `miniGuardModule` | `string` | Module override — uses `defaultModule` if omitted |
+
+---
+
 ## TypeScript
 
-All types are exported:
+All types are exported from the core entry:
 
 ```typescript
 import type { FeatureMap, FeatureRoles, MiniGuardOptions } from 'mini-guard';

@@ -4,7 +4,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./out-tsc/app",
-    "types": []
+    "types": [],
+    "rootDir": "../..",
+    "paths": {
+      "mini-guard": ["../../src/index.ts"],
+      "mini-guard/angular": ["../../src/angular.ts"]
+    }
   },
   "include": [
     "src/**/*.ts"

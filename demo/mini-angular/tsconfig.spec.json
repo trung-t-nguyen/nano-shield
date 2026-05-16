@@ -6,7 +6,12 @@
     "outDir": "./out-tsc/spec",
     "types": [
       "vitest/globals"
-    ]
+    ],
+    "rootDir": "../..",
+    "paths": {
+      "mini-guard": ["../../src/index.ts"],
+      "mini-guard/angular": ["../../src/angular.ts"]
+    }
   },
   "include": [
     "src/**/*.d.ts",

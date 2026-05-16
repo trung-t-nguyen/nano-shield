@@ -45,7 +45,8 @@ export class MiniGuard {
 
   private _log(...args: unknown[]): void {
     const env = (globalThis as { process?: { env?: Record<string, string> } }).process?.env;
-    if (this._debug || env?.MINI_GUARD_DEBUG) console.debug('[MiniGuard]', ...args);
+    // biome-ignore lint/complexity/useLiteralKeys: bracket notation required by noPropertyAccessFromIndexSignature in strict consumers
+    if (this._debug || env?.['MINI_GUARD_DEBUG']) console.debug('[MiniGuard]', ...args);
   }
 
   init(token: string): void {

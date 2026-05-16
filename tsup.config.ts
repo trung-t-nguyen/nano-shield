@@ -1,7 +1,12 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: {
+    index: 'src/index.ts',
+    react: 'src/react.tsx',
+    angular: 'src/angular.ts',
+  },
+  external: ['react', 'react-dom', '@angular/core', '@angular/common'],
   format: ['esm'],
   target: 'es2022',
   dts: true,

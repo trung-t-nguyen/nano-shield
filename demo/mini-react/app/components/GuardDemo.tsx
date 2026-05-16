@@ -1,7 +1,7 @@
 'use client';
 
-import { MiniGuard } from 'mini-guard';
-import { useState } from 'react';
+import { Guard, MiniGuardProvider, useMiniGuard } from 'mini-guard/react';
+import { useEffect, useState } from 'react';
 
 // ── Feature map ──────────────────────────────────────────────────────────────
 const featureMap = {
@@ -50,7 +50,6 @@ const PRESET_USERS = [
   {
     label: 'Admin',
     bg: 'bg-violet-600',
-    badge: 'bg-violet-100 text-violet-800',
     description: 'Full access to everything',
     roles: ['admin'],
     token: mockToken({ sub: '1', name: 'Admin User', roles: ['admin'], exp: FAR_FUTURE }),
@@ -58,7 +57,6 @@ const PRESET_USERS = [
   {
     label: 'Analyst',
     bg: 'bg-blue-600',
-    badge: 'bg-blue-100 text-blue-800',
     description: 'Can view & export reports',
     roles: ['analyst'],
     token: mockToken({ sub: '2', name: 'Analyst User', roles: ['analyst'], exp: FAR_FUTURE }),
@@ -66,7 +64,6 @@ const PRESET_USERS = [
   {
     label: 'Viewer',
     bg: 'bg-emerald-600',
-    badge: 'bg-emerald-100 text-emerald-800',
     description: 'Can only edit own profile',
     roles: ['viewer'],
     token: mockToken({ sub: '3', name: 'Viewer User', roles: ['viewer'], exp: FAR_FUTURE }),
@@ -74,7 +71,6 @@ const PRESET_USERS = [
   {
     label: 'Billing Mgr',
     bg: 'bg-amber-600',
-    badge: 'bg-amber-100 text-amber-800',
     description: 'Access to billing module',
     roles: ['billing'],
     token: mockToken({ sub: '4', name: 'Billing Manager', roles: ['billing'], exp: FAR_FUTURE }),
@@ -82,7 +78,6 @@ const PRESET_USERS = [
   {
     label: 'Guest',
     bg: 'bg-slate-500',
-    badge: 'bg-slate-100 text-slate-800',
     description: 'No token — zero access',
     roles: [],
     token: null,
@@ -96,58 +91,108 @@ const MODULE_LABELS: Record<string, string> = {
   billing: 'Billing',
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Persisted session (survives debug toggle remount) ─────────────────────────
+interface PersistedSession {
+  token: string | null;
+  activeLabel: string | null;
+  roles: string[];
+}
+
+// ── Shell: owns debug flag + persisted session state ─────────────────────────
 export default function GuardDemo() {
   const [debug, setDebug] = useState(false);
-  const [guard, setGuard] = useState(
-    () => new MiniGuard(featureMap, { defaultModule: 'dashboard', debug: false })
-  );
-  const [activeLabel, setActiveLabel] = useState<string | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
-  const [tokenPreview, setTokenPreview] = useState<string | null>(null);
-  const [customInput, setCustomInput] = useState('');
-  const [customOpen, setCustomOpen] = useState(false);
-  const [tick, setTick] = useState(0); // forces re-render after guard state change
+  const [guardKey, setGuardKey] = useState(0);
+  const [session, setSession] = useState<PersistedSession>({
+    token: null,
+    activeLabel: null,
+    roles: [],
+  });
 
   function toggleDebug() {
-    const next = !debug;
-    setDebug(next);
-    const newGuard = new MiniGuard(featureMap, { defaultModule: 'dashboard', debug: next });
-    if (tokenPreview) newGuard.init(tokenPreview);
-    setGuard(newGuard);
-    setTick((t) => t + 1);
+    setDebug((d) => !d);
+    setGuardKey((k) => k + 1);
   }
 
-  function applyToken(token: string | null) {
+  return (
+    <GuardDemoContent
+      key={guardKey}
+      debug={debug}
+      initialSession={session}
+      onSessionChange={setSession}
+      onToggleDebug={toggleDebug}
+    />
+  );
+}
+
+// ── Content: uses useMiniGuard hook ───────────────────────────────────────────
+function GuardDemoContent({
+  debug,
+  initialSession,
+  onSessionChange,
+  onToggleDebug,
+}: {
+  debug: boolean;
+  initialSession: PersistedSession;
+  onSessionChange: (s: PersistedSession) => void;
+  onToggleDebug: () => void;
+}) {
+  const { init, clear, canAccess, instance } = useMiniGuard(featureMap, {
+    defaultModule: 'dashboard',
+    debug,
+  });
+
+  const [activeLabel, setActiveLabel] = useState<string | null>(initialSession.activeLabel);
+  const [roles, setRoles] = useState<string[]>(initialSession.roles);
+  const [tokenPreview, setTokenPreview] = useState<string | null>(initialSession.token);
+  const [customInput, setCustomInput] = useState('');
+  const [customOpen, setCustomOpen] = useState(false);
+
+  // Re-hydrate after remount (debug toggle)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (initialSession.token) init(initialSession.token); }, []);
+
+  function applyToken(token: string | null): string[] {
     if (token) {
-      guard.init(token);
+      init(token);
       const payload = decodePayload(token);
       const raw = payload?.['roles'];
-      setRoles(Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : []);
+      const newRoles = Array.isArray(raw)
+        ? raw.filter((r): r is string => typeof r === 'string')
+        : [];
+      setRoles(newRoles);
       setTokenPreview(token);
-    } else {
-      guard.clear();
-      setRoles([]);
-      setTokenPreview(null);
+      return newRoles;
     }
-    setTick((t) => t + 1);
+    clear();
+    setRoles([]);
+    setTokenPreview(null);
+    return [];
   }
 
   function loginAs(user: (typeof PRESET_USERS)[number]) {
-    applyToken(user.token as string | null);
+    const token = user.token as string | null;
+    const newRoles = applyToken(token);
     setActiveLabel(user.label);
+    onSessionChange({ token, activeLabel: user.label, roles: newRoles });
     setCustomOpen(false);
   }
 
   function loginCustom() {
     const t = customInput.trim();
     if (!t) return;
-    applyToken(t);
+    const newRoles = applyToken(t);
     setActiveLabel('Custom');
+    onSessionChange({ token: t, activeLabel: 'Custom', roles: newRoles });
     setCustomOpen(false);
   }
 
-  const canAccess = (feat: string, mod: string) => guard.canAccess(feat, mod);
+  function logout() {
+    clear();
+    setRoles([]);
+    setTokenPreview(null);
+    setActiveLabel(null);
+    onSessionChange({ token: null, activeLabel: null, roles: [] });
+  }
 
   const allEntries = Object.entries(featureMap) as [
     keyof typeof featureMap,
@@ -160,24 +205,24 @@ export default function GuardDemo() {
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-3">
         <span className="text-2xl">🛡️</span>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">mini-guard demo</h1>
+          <h1 className="text-xl font-bold tracking-tight">mini-guard · React demo</h1>
           <p className="text-xs text-slate-500">
             Ultra-lightweight RBAC · JWT decoding · zero dependencies
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={toggleDebug}
+            onClick={onToggleDebug}
             title="Logs [MiniGuard] events to the browser console"
-            className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-medium border transition-colors ${
+            className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
               debug
-                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                ? 'bg-amber-500 text-white'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
             }`}
           >
-            <span>{debug ? '🐛' : '🐛'}</span>
-            debug {debug ? 'on' : 'off'}
+            {debug ? 'debug: on' : 'debug: off'}
           </button>
+          {debug && <span className="text-xs text-amber-600 font-medium">↳ check console</span>}
           <a
             href="https://www.npmjs.com/package/mini-guard"
             target="_blank"
@@ -285,16 +330,10 @@ export default function GuardDemo() {
                   </div>
                 )}
                 <button
-                  onClick={() => {
-                    guard.clear();
-                    setRoles([]);
-                    setTokenPreview(null);
-                    setActiveLabel(null);
-                    setTick((t) => t + 1);
-                  }}
+                  onClick={logout}
                   className="mt-1 text-xs text-red-500 hover:text-red-700 text-left transition-colors"
                 >
-                  logout (guard.clear())
+                  logout (clear())
                 </button>
               </div>
             ) : (
@@ -303,14 +342,17 @@ export default function GuardDemo() {
           </section>
         </aside>
 
-        {/* ── Right panel — access matrix ── */}
+        {/* ── Right panel ── */}
         <section className="flex flex-col gap-4">
+
+          {/* ① useMiniGuard — programmatic access matrix */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Feature access matrix
-            </h2>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">useMiniGuard</span>
+              <h2 className="text-sm font-semibold text-slate-700">Programmatic access matrix</h2>
+            </div>
             <p className="text-xs text-slate-400 mb-4">
-              Live result of <code className="bg-slate-100 px-1 rounded">guard.canAccess(feature, module)</code>
+              Live result of <code className="bg-slate-100 px-1 rounded">canAccess(feature, module)</code>
             </p>
 
             <div className="flex flex-col gap-6">
@@ -335,16 +377,12 @@ export default function GuardDemo() {
                           <div className="flex items-center gap-2 min-w-0">
                             <span
                               className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                                allowed
-                                  ? 'bg-emerald-500 text-white'
-                                  : 'bg-slate-300 text-white'
+                                allowed ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'
                               }`}
                             >
                               {allowed ? '✓' : '✕'}
                             </span>
-                            <code className="text-sm font-mono text-slate-700 truncate">
-                              {feat}
-                            </code>
+                            <code className="text-sm font-mono text-slate-700 truncate">{feat}</code>
                           </div>
                           <div className="flex gap-1 flex-wrap justify-end ml-2">
                             {(allowedRoles as string[]).map((r) => (
@@ -369,21 +407,103 @@ export default function GuardDemo() {
             </div>
           </div>
 
+          {/* ② <Guard> component — declarative conditional rendering */}
+          <MiniGuardProvider guard={instance}>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">&lt;Guard&gt;</span>
+                <h2 className="text-sm font-semibold text-slate-700">Quick actions</h2>
+              </div>
+              <p className="text-xs text-slate-400 mb-4">
+                Buttons are conditionally rendered — only accessible ones appear in the DOM
+              </p>
+
+              {roles.length === 0 && (
+                <p className="text-sm text-slate-400 italic mb-4">Log in to see available actions</p>
+              )}
+
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Dashboard</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Guard feature="view:reports" module="dashboard">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
+                        View reports
+                      </button>
+                    </Guard>
+                    <Guard feature="edit:reports" module="dashboard">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                        Edit reports
+                      </button>
+                    </Guard>
+                    <Guard feature="export:data" module="dashboard">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+                        Export data
+                      </button>
+                    </Guard>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Settings</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Guard feature="manage:users" module="settings">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
+                        Manage users
+                      </button>
+                    </Guard>
+                    <Guard feature="view:logs" module="settings">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
+                        View logs
+                      </button>
+                    </Guard>
+                    <Guard feature="edit:profile" module="settings">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
+                        Edit profile
+                      </button>
+                    </Guard>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Billing</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Guard feature="view:invoices" module="billing">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors">
+                        View invoices
+                      </button>
+                    </Guard>
+                    <Guard feature="manage:subscriptions" module="billing">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors">
+                        Manage subscriptions
+                      </button>
+                    </Guard>
+                    <Guard feature="view:billing" module="billing">
+                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
+                        View billing
+                      </button>
+                    </Guard>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </MiniGuardProvider>
+
           {/* Code snippet */}
           <div className="bg-slate-900 rounded-xl p-4 text-sm font-mono overflow-x-auto">
             <p className="text-slate-400 text-xs mb-2">// How this demo is wired</p>
-            <pre className="text-slate-100 whitespace-pre text-xs leading-relaxed">{`import { MiniGuard } from 'mini-guard';
+            <pre className="text-slate-100 whitespace-pre text-xs leading-relaxed">{`import { Guard, MiniGuardProvider, useMiniGuard } from 'mini-guard/react';
 
-const guard = new MiniGuard(featureMap, {
-  defaultModule: 'dashboard',
-  debug: ${debug},${debug ? '         // logs [MiniGuard] events to console' : ''}
-});
+function App() {
+  const { init, clear, canAccess } = useMiniGuard(featureMap, {
+    defaultModule: 'dashboard',${debug ? `\n    debug: true,         // logs [MiniGuard] events to console` : ''}
+  });
 
-guard.init(rawJwtToken);       // after login
-guard.canAccess('view:reports');          // → ${canAccess('view:reports', 'dashboard')}
-guard.canAccess('edit:reports');          // → ${canAccess('edit:reports', 'dashboard')}
-guard.canAccess('manage:users', 'settings'); // → ${canAccess('manage:users', 'settings')}
-guard.clear();                 // on logout`}</pre>
+  // after login — triggers re-render automatically
+  init(rawJwtToken);
+  canAccess('view:reports')              // → ${canAccess('view:reports', 'dashboard')}
+  canAccess('edit:reports')              // → ${canAccess('edit:reports', 'dashboard')}
+  canAccess('manage:users', 'settings')  // → ${canAccess('manage:users', 'settings')}
+  clear();  // on logout
+}`}</pre>
           </div>
         </section>
       </main>
