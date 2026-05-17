@@ -3,12 +3,16 @@ import type { JwtPayload } from './types.js';
 export function decodeJwt(token: string): JwtPayload | null {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      console.warn('[mini-guard] Unable to decode token: invalid JWT format.');
+      return null;
+    }
     // Base64url → Base64: replace URL-safe chars and let atob handle missing padding
     const encoded = parts[1] ?? '';
     const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(base64)) as JwtPayload;
   } catch {
+    console.warn('[mini-guard] Unable to decode token: invalid payload or encoding.');
     return null;
   }
 }

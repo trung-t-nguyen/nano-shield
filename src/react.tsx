@@ -32,9 +32,10 @@ export function useMiniGuard(featureMap?: FeatureMap, options?: MiniGuardOptions
 
   const init = useCallback(
     (token: string) => {
-      instance.init(token);
+      const result = instance.init(token);
       setRev((r) => r + 1);
       notifyRef.current?.();
+      return result;
     },
     [instance],
   );
@@ -49,7 +50,10 @@ export function useMiniGuard(featureMap?: FeatureMap, options?: MiniGuardOptions
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const canAccess = useCallback((feature: string, mod?: string) => instance.canAccess(feature, mod), [instance, rev]);
 
-  return { init, clear, canAccess, instance };
+  const getRoles = useCallback(() => instance.getRoles(), [instance, rev]);
+  const getTokenPayload = useCallback(() => instance.getTokenPayload(), [instance, rev]);
+
+  return { init, clear, canAccess, getRoles, getTokenPayload, instance };
 }
 
 export function Guard({

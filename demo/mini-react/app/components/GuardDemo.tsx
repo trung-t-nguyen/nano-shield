@@ -1,26 +1,11 @@
 'use client';
 
-import { Guard, MiniGuardProvider, useMiniGuard } from 'mini-guard/react';
-import { useEffect, useState } from 'react';
-
-// ── Feature map ──────────────────────────────────────────────────────────────
-const featureMap = {
-  dashboard: {
-    'view:reports': ['admin', 'analyst'],
-    'edit:reports': ['admin'],
-    'export:data': ['admin', 'analyst'],
-  },
-  settings: {
-    'manage:users': ['admin'],
-    'view:logs': ['admin', 'analyst'],
-    'edit:profile': ['admin', 'analyst', 'viewer'],
-  },
-  billing: {
-    'view:invoices': ['admin', 'billing'],
-    'manage:subscriptions': ['admin'],
-    'view:billing': ['admin', 'billing', 'analyst'],
-  },
-};
+import { MiniGuardProvider, useMiniGuard } from 'mini-guard/react';
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { AccessMatrixPanel, QuickActionsPanel } from './RbacPanels';
+import { DemoHeader } from './DemoHeader';
+import { featureMap } from './rbacConfig';
 
 // ── Demo token builder (unsigned — for demo only) ────────────────────────────
 function b64url(obj: object): string {
@@ -45,8 +30,16 @@ function decodePayload(token: string): Record<string, unknown> | null {
 
 const FAR_FUTURE = 9_999_999_999; // year ~2286
 
+interface PresetUser {
+  label: string;
+  bg: string;
+  description: string;
+  roles: readonly string[];
+  token: string | null;
+}
+
 // ── Preset users ─────────────────────────────────────────────────────────────
-const PRESET_USERS = [
+const PRESET_USERS: readonly PresetUser[] = [
   {
     label: 'Admin',
     bg: 'bg-violet-600',
@@ -84,18 +77,155 @@ const PRESET_USERS = [
   },
 ] as const;
 
-// ── Module labels ─────────────────────────────────────────────────────────────
-const MODULE_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  settings: 'Settings',
-  billing: 'Billing',
-};
-
 // ── Persisted session (survives debug toggle remount) ─────────────────────────
 interface PersistedSession {
   token: string | null;
   activeLabel: string | null;
   roles: string[];
+}
+
+interface UserPickerSectionProps {
+  activeLabel: string | null;
+  onSelectUser: (user: PresetUser) => void;
+}
+
+function UserPickerSection({ activeLabel, onSelectUser }: UserPickerSectionProps) {
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+        1. Pick a user
+      </h2>
+      <div className="flex flex-col gap-2">
+        {PRESET_USERS.map((u) => (
+          <button
+            key={u.label}
+            onClick={() => onSelectUser(u)}
+            className={`flex items-center gap-3 rounded-lg border-2 px-3 py-2 text-left transition-all ${
+              activeLabel === u.label
+                ? 'border-violet-500 bg-violet-50'
+                : 'border-transparent bg-slate-50 hover:bg-slate-100'
+            }`}
+          >
+            <span
+              className={`${u.bg} text-white text-xs font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0`}
+            >
+              {u.label[0]}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{u.label}</p>
+              <p className="text-xs text-slate-400 truncate">{u.description}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface CustomTokenSectionProps {
+  customOpen: boolean;
+  customInput: string;
+  onToggleOpen: () => void;
+  onInputChange: (value: string) => void;
+  onApplyToken: () => void;
+}
+
+function CustomTokenSection({
+  customOpen,
+  customInput,
+  onToggleOpen,
+  onInputChange,
+  onApplyToken,
+}: CustomTokenSectionProps) {
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <button
+        onClick={onToggleOpen}
+        className="w-full flex items-center justify-between text-sm font-semibold text-slate-500 uppercase tracking-wider"
+      >
+        <span>2. Paste your JWT</span>
+        <span className="text-slate-400">{customOpen ? '▲' : '▼'}</span>
+      </button>
+      {customOpen && (
+        <div className="mt-3 flex flex-col gap-2">
+          <textarea
+            value={customInput}
+            onChange={(e) => onInputChange(e.target.value)}
+            placeholder="eyJhbGciOiJIUzI1NiJ9..."
+            rows={4}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+          <button
+            onClick={onApplyToken}
+            className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            Apply token
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+interface CurrentSessionSectionProps {
+  activeLabel: string | null;
+  roles: string[];
+  tokenPreview: string | null;
+  onLogout: () => void;
+}
+
+function CurrentSessionSection({
+  activeLabel,
+  roles,
+  tokenPreview,
+  onLogout,
+}: CurrentSessionSectionProps) {
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
+        Current session
+      </h2>
+      {activeLabel ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">User:</span>
+            <span className="text-sm font-semibold">{activeLabel}</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {roles.length > 0 ? (
+              roles.map((r) => (
+                <span
+                  key={r}
+                  className="bg-violet-100 text-violet-800 text-xs font-mono px-2 py-0.5 rounded-full"
+                >
+                  {r}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-slate-400 italic">no roles</span>
+            )}
+          </div>
+          {tokenPreview && (
+            <div className="mt-1">
+              <p className="text-xs text-slate-400 mb-1">JWT (truncated)</p>
+              <p className="text-xs font-mono text-slate-600 bg-slate-50 rounded p-2 break-all line-clamp-3">
+                {tokenPreview.slice(0, 120)}
+                {tokenPreview.length > 120 ? '…' : ''}
+              </p>
+            </div>
+          )}
+          <button
+            onClick={onLogout}
+            className="mt-1 text-xs text-red-500 hover:text-red-700 text-left transition-colors"
+          >
+            logout (clear())
+          </button>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400 italic">Not logged in</p>
+      )}
+    </section>
+  );
 }
 
 // ── Shell: owns debug flag + persisted session state ─────────────────────────
@@ -146,10 +276,21 @@ function GuardDemoContent({
   const [tokenPreview, setTokenPreview] = useState<string | null>(initialSession.token);
   const [customInput, setCustomInput] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
+  const hasRehydratedRef = useRef(false);
 
-  // Re-hydrate after remount (debug toggle)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (initialSession.token) init(initialSession.token); }, []);
+  useEffect(() => {
+    if (hasRehydratedRef.current) return;
+    hasRehydratedRef.current = true;
+    if (initialSession.token) {
+      init(initialSession.token);
+    }
+  }, [initialSession.token, init]);
+
+  function resetSessionState() {
+    clear();
+    setRoles([]);
+    setTokenPreview(null);
+  }
 
   function applyToken(token: string | null): string[] {
     if (token) {
@@ -163,14 +304,12 @@ function GuardDemoContent({
       setTokenPreview(token);
       return newRoles;
     }
-    clear();
-    setRoles([]);
-    setTokenPreview(null);
+    resetSessionState();
     return [];
   }
 
-  function loginAs(user: (typeof PRESET_USERS)[number]) {
-    const token = user.token as string | null;
+  function loginAs(user: PresetUser) {
+    const token = user.token;
     const newRoles = applyToken(token);
     setActiveLabel(user.label);
     onSessionChange({ token, activeLabel: user.label, roles: newRoles });
@@ -187,309 +326,80 @@ function GuardDemoContent({
   }
 
   function logout() {
-    clear();
-    setRoles([]);
-    setTokenPreview(null);
+    resetSessionState();
     setActiveLabel(null);
     onSessionChange({ token: null, activeLabel: null, roles: [] });
   }
 
-  const allEntries = Object.entries(featureMap) as [
-    keyof typeof featureMap,
-    Record<string, string[]>,
-  ][];
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      {/* ── Header ── */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-3">
-        <span className="text-2xl">🛡️</span>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">mini-guard · React demo</h1>
-          <p className="text-xs text-slate-500">
-            Ultra-lightweight RBAC · JWT decoding · zero dependencies
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={onToggleDebug}
-            title="Logs [MiniGuard] events to the browser console"
-            className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
-              debug
-                ? 'bg-amber-500 text-white'
-                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-            }`}
-          >
-            {debug ? 'debug: on' : 'debug: off'}
-          </button>
-          {debug && <span className="text-xs text-amber-600 font-medium">↳ check console</span>}
-          <a
-            href="https://www.npmjs.com/package/mini-guard"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs bg-red-600 text-white px-3 py-1 rounded-full font-medium hover:bg-red-700 transition-colors"
-          >
-            npm install mini-guard
-          </a>
-        </div>
-      </header>
+      <DemoHeader
+        title="mini-guard · React demo"
+        subtitle="Ultra-lightweight RBAC · JWT decoding · zero dependencies"
+        actions={
+          <>
+            <button
+              onClick={onToggleDebug}
+              title="Logs [MiniGuard] events to the browser console"
+              className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
+                debug
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+            >
+              {debug ? 'debug: on' : 'debug: off'}
+            </button>
+            {debug && <span className="text-xs text-amber-600 font-medium">↳ check console</span>}
+            <Link
+              href="/auth0"
+              className="text-xs bg-black text-white px-3 py-1 rounded-full font-medium hover:bg-slate-800 transition-colors"
+            >
+              Auth0 demo →
+            </Link>
+            <a
+              href="https://www.npmjs.com/package/mini-guard"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs bg-red-600 text-white px-3 py-1 rounded-full font-medium hover:bg-red-700 transition-colors"
+            >
+              npm install mini-guard
+            </a>
+          </>
+        }
+      />
 
       <main className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
         {/* ── Left panel ── */}
         <aside className="flex flex-col gap-4">
-          {/* User picker */}
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              1. Pick a user
-            </h2>
-            <div className="flex flex-col gap-2">
-              {PRESET_USERS.map((u) => (
-                <button
-                  key={u.label}
-                  onClick={() => loginAs(u)}
-                  className={`flex items-center gap-3 rounded-lg border-2 px-3 py-2 text-left transition-all ${
-                    activeLabel === u.label
-                      ? 'border-violet-500 bg-violet-50'
-                      : 'border-transparent bg-slate-50 hover:bg-slate-100'
-                  }`}
-                >
-                  <span
-                    className={`${u.bg} text-white text-xs font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0`}
-                  >
-                    {u.label[0]}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{u.label}</p>
-                    <p className="text-xs text-slate-400 truncate">{u.description}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+          <UserPickerSection activeLabel={activeLabel} onSelectUser={loginAs} />
 
-          {/* Custom token */}
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <button
-              onClick={() => setCustomOpen((o) => !o)}
-              className="w-full flex items-center justify-between text-sm font-semibold text-slate-500 uppercase tracking-wider"
-            >
-              <span>2. Paste your JWT</span>
-              <span className="text-slate-400">{customOpen ? '▲' : '▼'}</span>
-            </button>
-            {customOpen && (
-              <div className="mt-3 flex flex-col gap-2">
-                <textarea
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiJ9..."
-                  rows={4}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
-                <button
-                  onClick={loginCustom}
-                  className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
-                >
-                  Apply token
-                </button>
-              </div>
-            )}
-          </section>
+          <CustomTokenSection
+            customOpen={customOpen}
+            customInput={customInput}
+            onToggleOpen={() => setCustomOpen((o) => !o)}
+            onInputChange={setCustomInput}
+            onApplyToken={loginCustom}
+          />
 
-          {/* Current session */}
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              Current session
-            </h2>
-            {activeLabel ? (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">User:</span>
-                  <span className="text-sm font-semibold">{activeLabel}</span>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {roles.length > 0 ? (
-                    roles.map((r) => (
-                      <span
-                        key={r}
-                        className="bg-violet-100 text-violet-800 text-xs font-mono px-2 py-0.5 rounded-full"
-                      >
-                        {r}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">no roles</span>
-                  )}
-                </div>
-                {tokenPreview && (
-                  <div className="mt-1">
-                    <p className="text-xs text-slate-400 mb-1">JWT (truncated)</p>
-                    <p className="text-xs font-mono text-slate-600 bg-slate-50 rounded p-2 break-all line-clamp-3">
-                      {tokenPreview.slice(0, 120)}
-                      {tokenPreview.length > 120 ? '…' : ''}
-                    </p>
-                  </div>
-                )}
-                <button
-                  onClick={logout}
-                  className="mt-1 text-xs text-red-500 hover:text-red-700 text-left transition-colors"
-                >
-                  logout (clear())
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400 italic">Not logged in</p>
-            )}
-          </section>
+          <CurrentSessionSection
+            activeLabel={activeLabel}
+            roles={roles}
+            tokenPreview={tokenPreview}
+            onLogout={logout}
+          />
         </aside>
 
         {/* ── Right panel ── */}
         <section className="flex flex-col gap-4">
+          <AccessMatrixPanel canAccess={canAccess} roles={roles} />
 
-          {/* ① useMiniGuard — programmatic access matrix */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">useMiniGuard</span>
-              <h2 className="text-sm font-semibold text-slate-700">Programmatic access matrix</h2>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">
-              Live result of <code className="bg-slate-100 px-1 rounded">canAccess(feature, module)</code>
-            </p>
-
-            <div className="flex flex-col gap-6">
-              {allEntries.map(([mod, features]) => (
-                <div key={mod}>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2">
-                    <span className="w-px h-4 bg-slate-300 inline-block" />
-                    {MODULE_LABELS[mod] ?? mod}
-                  </h3>
-                  <div className="flex flex-col gap-1.5">
-                    {Object.entries(features).map(([feat, allowedRoles]) => {
-                      const allowed = canAccess(feat, mod);
-                      return (
-                        <div
-                          key={feat}
-                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 border ${
-                            allowed
-                              ? 'bg-emerald-50 border-emerald-200'
-                              : 'bg-slate-50 border-slate-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                                allowed ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'
-                              }`}
-                            >
-                              {allowed ? '✓' : '✕'}
-                            </span>
-                            <code className="text-sm font-mono text-slate-700 truncate">{feat}</code>
-                          </div>
-                          <div className="flex gap-1 flex-wrap justify-end ml-2">
-                            {(allowedRoles as string[]).map((r) => (
-                              <span
-                                key={r}
-                                className={`text-xs font-mono px-1.5 py-0.5 rounded ${
-                                  roles.includes(r)
-                                    ? 'bg-emerald-200 text-emerald-900 font-bold'
-                                    : 'bg-slate-100 text-slate-500'
-                                }`}
-                              >
-                                {r}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ② <Guard> component — declarative conditional rendering */}
           <MiniGuardProvider guard={instance}>
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">&lt;Guard&gt;</span>
-                <h2 className="text-sm font-semibold text-slate-700">Quick actions</h2>
-              </div>
-              <p className="text-xs text-slate-400 mb-4">
-                Buttons are conditionally rendered — only accessible ones appear in the DOM
-              </p>
-
-              {roles.length === 0 && (
-                <p className="text-sm text-slate-400 italic mb-4">Log in to see available actions</p>
-              )}
-
-              <div className="flex flex-col gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Dashboard</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Guard feature="view:reports" module="dashboard">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
-                        View reports
-                      </button>
-                    </Guard>
-                    <Guard feature="edit:reports" module="dashboard">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                        Edit reports
-                      </button>
-                    </Guard>
-                    <Guard feature="export:data" module="dashboard">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-                        Export data
-                      </button>
-                    </Guard>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Settings</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Guard feature="manage:users" module="settings">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
-                        Manage users
-                      </button>
-                    </Guard>
-                    <Guard feature="view:logs" module="settings">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
-                        View logs
-                      </button>
-                    </Guard>
-                    <Guard feature="edit:profile" module="settings">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
-                        Edit profile
-                      </button>
-                    </Guard>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Billing</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Guard feature="view:invoices" module="billing">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors">
-                        View invoices
-                      </button>
-                    </Guard>
-                    <Guard feature="manage:subscriptions" module="billing">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors">
-                        Manage subscriptions
-                      </button>
-                    </Guard>
-                    <Guard feature="view:billing" module="billing">
-                      <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-white hover:bg-slate-800 transition-colors">
-                        View billing
-                      </button>
-                    </Guard>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <QuickActionsPanel emptyMessage={roles.length === 0 ? 'Log in to see available actions' : undefined} />
           </MiniGuardProvider>
 
           {/* Code snippet */}
           <div className="bg-slate-900 rounded-xl p-4 text-sm font-mono overflow-x-auto">
-            <p className="text-slate-400 text-xs mb-2">// How this demo is wired</p>
+            <p className="text-slate-400 text-xs mb-2">{'// How this demo is wired'}</p>
             <pre className="text-slate-100 whitespace-pre text-xs leading-relaxed">{`import { Guard, MiniGuardProvider, useMiniGuard } from 'mini-guard/react';
 
 function App() {
