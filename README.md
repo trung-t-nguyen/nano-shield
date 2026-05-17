@@ -2,7 +2,7 @@
 
 Ultra-lightweight, zero-dependency, frontend-focused RBAC (Role-Based Access Control) utility. Safely decodes JWTs in the browser and matches the user's roles against a centralized feature-to-role configuration map.
 
-[![bundle size](https://img.shields.io/badge/gzipped-~913B-brightgreen)](https://bundlephobia.com/package/mini-guard)
+[![bundle size](https://img.shields.io/badge/gzipped-~1042B-brightgreen)](https://bundlephobia.com/package/mini-guard)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![github](https://img.shields.io/badge/github-mini--guard-181717?logo=github)](https://github.com/trung-t-nguyen/mini-guard)
 
@@ -82,13 +82,21 @@ Creates a guard instance.
 | `featureMap` | `FeatureMap` | Map of `module → feature → allowed roles` |
 | `optionsOrModule` | `string \| MiniGuardOptions` | Default module name (shorthand) or full options object |
 
-### `guard.init(token: string): void`
+### `guard.init(token: string): GuardContext`
 
-Parses and stores a raw JWT string. Roles are extracted and optionally normalized. Call this after login or token refresh.
+Parses and stores a raw JWT string. Roles are extracted and optionally normalized. Call this after login or token refresh. Returns `{ roles: string[], payload: JwtPayload | null }`, or `{ roles: [], payload: null }` if the token is invalid or expired.
 
 ### `guard.canAccess(feature: string, module?: string): boolean`
 
 Returns `true` if the current user has a role that is allowed to access `feature` in `module`. Falls back to `defaultModule` if `module` is omitted. Returns `false` if the token is absent, expired, or the user has no matching role.
+
+### `guard.getRoles(): string[]`
+
+Returns a copy of the normalized role list stored from the last `init()` call. Returns `[]` if no token has been initialized.
+
+### `guard.getTokenPayload(): JwtPayload | null`
+
+Returns a copy of the decoded JWT payload from the last `init()` call. Returns `null` if no token has been initialized or if the token was expired.
 
 ### `guard.clear(): void`
 
@@ -259,13 +267,15 @@ npm install react
 
 A hook that manages a `MiniGuard` instance and triggers re-renders after `init` and `clear`.
 
-Returns `{ init, clear, canAccess, instance }`:
+Returns `{ init, clear, canAccess, getRoles, getTokenPayload, instance }`:
 
 | Return | Description |
 |---|---|
-| `init(token)` | Decode a JWT and cache roles; triggers re-render |
+| `init(token)` | Decode a JWT and cache roles; triggers re-render; returns `GuardContext` |
 | `clear()` | Wipe roles; triggers re-render |
 | `canAccess(feature, module?)` | Check access; stable reference, re-evaluated after each `init`/`clear` |
+| `getRoles()` | Get a copy of the current cached roles array |
+| `getTokenPayload()` | Get a copy of the current JWT payload or `null` |
 | `instance` | The underlying `MiniGuard` — escape hatch for direct access |
 
 Must be called with either `featureMap` or inside a `MiniGuardProvider` — throws if neither is provided.
@@ -377,10 +387,12 @@ miniGuard.configure(newFeatureMap, { defaultModule: 'dashboard' }, freshJwtToken
 
 | Method | Description |
 |---|---|
-| `configure(featureMap, options?, token?)` | Creates (or replaces) the underlying `MiniGuard` instance; pass `token` to initialise in one call |
-| `init(token)` | Decodes the JWT and caches roles |
+| `configure(featureMap, options?, token?)` | Creates (or replaces) the underlying `MiniGuard` instance; pass `token` to initialise in one call; returns `GuardContext \| undefined` |
+| `init(token)` | Decodes the JWT and caches roles; returns `GuardContext \| undefined` |
 | `clear()` | Wipes roles — call on logout |
 | `canAccess(feature, module?)` | Returns `true` if the current user can access the feature |
+| `getRoles()` | Returns a copy of the current cached roles array |
+| `getTokenPayload()` | Returns a copy of the current JWT payload or `null` |
 
 ### `MiniGuardDirective` (`*miniGuard`)
 
@@ -412,8 +424,16 @@ export class DashboardComponent {}
 All types are exported from the core entry:
 
 ```typescript
-import type { FeatureMap, FeatureRoles, MiniGuardOptions } from 'mini-guard';
+import type { FeatureMap, FeatureRoles, MiniGuardOptions, JwtPayload, GuardContext } from 'mini-guard';
 ```
+
+| Type | Description |
+|---|---|
+| `FeatureMap` | `Record<string, FeatureRoles>` — map of module names to feature permissions |
+| `FeatureRoles` | `Record<string, string[]>` — map of feature names to allowed role arrays |
+| `MiniGuardOptions` | Configuration options for `MiniGuard` constructor |
+| `JwtPayload` | Decoded JWT payload with optional `exp` claim; any other claims are available as `[key: string]` |
+| `GuardContext` | Return type of `init()` — `{ roles: string[], payload: JwtPayload \| null }` |
 
 ---
 
