@@ -1,22 +1,23 @@
 import { Directive, type DoCheck, Injectable, Input, TemplateRef, ViewContainerRef, inject } from '@angular/core';
 import { MiniGuard } from './index.js';
-import type { FeatureMap, MiniGuardOptions } from './types.js';
+import type { FeatureMap, JwtPayload, GuardContext, MiniGuardOptions } from './types.js';
 
 @Injectable({ providedIn: 'root' })
 export class MiniGuardService {
   private _guard: MiniGuard | null = null;
 
-  configure(featureMap: FeatureMap, options?: MiniGuardOptions, token?: string): void {
+  configure(featureMap: FeatureMap, options?: MiniGuardOptions, token?: string): GuardContext | undefined {
     this._guard = new MiniGuard(featureMap, options);
-    if (token) this._guard.init(token);
+    if (token) return this._guard.init(token);
+    return undefined;
   }
 
-  init(token: string): void {
+  init(token: string): GuardContext | undefined {
     if (!this._guard) {
       console.warn('[MiniGuard] call configure() before init()');
       return;
     }
-    this._guard.init(token);
+    return this._guard.init(token);
   }
 
   clear(): void {
@@ -29,6 +30,14 @@ export class MiniGuardService {
 
   canAccess(feature: string, mod?: string): boolean {
     return this._guard?.canAccess(feature, mod) ?? false;
+  }
+
+  getRoles(): string[] {
+    return this._guard?.getRoles() ?? [];
+  }
+
+  getTokenPayload(): JwtPayload | null {
+    return this._guard?.getTokenPayload() ?? null;
   }
 }
 

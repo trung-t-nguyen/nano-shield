@@ -1,4 +1,4 @@
-import type { FeatureMap, MiniGuardOptions } from './types.js';
+import type { FeatureMap, JwtPayload, GuardContext, MiniGuardOptions } from './types.js';
 import { decodeJwt, isExpired } from './jwt.js';
 
 function buildRoleExtractor(template: string): (role: string) => string {
@@ -23,6 +23,7 @@ export class MiniGuard {
   private readonly _strategy: 'any' | 'all';
   private readonly _debug: boolean;
   private _roles: string[] = [];
+  private _payload: JwtPayload | null = null;
 
   constructor(featureMap: FeatureMap, optionsOrModule?: MiniGuardOptions | string) {
     this._map = featureMap;
@@ -49,18 +50,21 @@ export class MiniGuard {
     if (this._debug || env?.['MINI_GUARD_DEBUG']) console.debug('[MiniGuard]', ...args);
   }
 
-  init(token: string): void {
+  init(token: string): GuardContext {
     const payload = decodeJwt(token);
     if (!payload) {
       this._log('init: invalid token');
       this._roles = [];
-      return;
+      this._payload = null;
+      return { roles: [], payload: null };
     }
     if (isExpired(payload)) {
       this._log('init: token expired');
       this._roles = [];
-      return;
+      this._payload = null;
+      return { roles: [], payload: null };
     }
+    this._payload = payload;
     const raw = this._getByPath(payload, this._rolesClaim);
     let roles: string[];
     if (Array.isArray(raw)) roles = raw.filter((v): v is string => typeof v === 'string');
@@ -68,11 +72,21 @@ export class MiniGuard {
     else roles = [];
     this._roles = this._roleNormalize ? roles.map(this._roleNormalize) : roles;
     this._log('init: roles =', this._roles);
+    return { roles: [...this._roles], payload: { ...this._payload } };
   }
 
   clear(): void {
     this._log('clear');
     this._roles = [];
+    this._payload = null;
+  }
+
+  getTokenPayload(): JwtPayload | null {
+    return this._payload ? { ...this._payload } : null;
+  }
+
+  getRoles(): string[] {
+    return [...this._roles];
   }
 
   canAccess(feature: string, module?: string): boolean {

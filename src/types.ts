@@ -16,3 +16,8 @@ export interface JwtPayload {
   exp?: number;
   [key: string]: unknown;
 }
+
+export interface GuardContext {
+  roles: string[];
+  payload: JwtPayload | null;
+}
